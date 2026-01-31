@@ -59,3 +59,9 @@ The CPU was fully simulated and verified using a **self-checking testbench**.
 ```bash
 iverilog -g2012 design.sv testbench.sv -o cpu_sim
 vvp cpu_sim
+
+---
+
+## Simulation Result
+The sample program executes correctly and halts with the expected accumulator value,
+as verified by the self-checking testbench.
