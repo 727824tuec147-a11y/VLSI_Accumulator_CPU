@@ -1,0 +1,122 @@
+`timescale 1ns/1ps
+
+module cpu_acc(
+    input  logic clk,
+    input  logic reset,
+    output logic [7:0] pc,
+    output logic [7:0] acc,
+    output logic halted
+);
+
+    // Program memory
+    logic [7:0] mem [0:255];
+
+    // Instruction fields
+    logic [7:0] instr;
+    logic [3:0] opcode;
+    logic [3:0] operand;
+
+    // Status flags
+    logic Z, C, N;
+    logic [8:0] alu_result;
+
+    // FSM states
+    typedef enum logic [1:0] {
+        FETCH,
+        DECODE,
+        EXECUTE,
+        HALT_STATE
+    } state_t;
+
+    state_t state;
+
+    // Load program
+    initial begin
+        $readmemh("prog.mem", mem);
+    end
+
+    // FSM-based CPU
+    always_ff @(posedge clk or posedge reset) begin
+        if (reset) begin
+            pc     <= 8'h00;
+            acc    <= 8'h00;
+            halted <= 1'b0;
+            Z      <= 1'b0;
+            C      <= 1'b0;
+            N      <= 1'b0;
+            state  <= FETCH;
+        end
+        else begin
+            case (state)
+
+                // ---------------- FETCH ----------------
+                FETCH: begin
+                    instr <= mem[pc];
+                    pc    <= pc + 1;
+                    state <= DECODE;
+                end
+
+                // ---------------- DECODE ----------------
+                DECODE: begin
+                    opcode  <= instr[7:4];
+                    operand <= instr[3:0];
+                    state   <= EXECUTE;
+                end
+
+                // ---------------- EXECUTE ----------------
+                EXECUTE: begin
+                    case (opcode)
+
+                        4'h1: begin // LOAD
+                            acc <= operand;
+                            Z   <= (operand == 4'h0);
+                            N   <= 1'b0;
+                            C   <= 1'b0;
+                        end
+
+                        4'h2: begin // ADD
+                            alu_result = acc + operand;
+                            acc <= alu_result[7:0];
+                            C   <= alu_result[8];
+                            Z   <= (alu_result[7:0] == 8'h00);
+                            N   <= alu_result[7];
+                        end
+
+                        4'h3: begin // SUB
+                            alu_result = acc - operand;
+                            acc <= alu_result[7:0];
+                            C   <= alu_result[8]; // borrow
+                            Z   <= (alu_result[7:0] == 8'h00);
+                            N   <= alu_result[7];
+                        end
+
+                        4'h4: begin // JZ (Jump if Zero)
+                            if (Z)
+                                pc <= {4'h0, operand}; // jump to address 0x0?operand
+                        end
+
+                        4'h5: begin // JNZ (Jump if Not Zero)
+                            if (!Z)
+                                pc <= {4'h0, operand};
+                        end
+
+                        4'hF: begin // HALT
+                            halted <= 1'b1;
+                            state  <= HALT_STATE;
+                        end
+                    endcase
+
+                    if (opcode != 4'hF)
+                        state <= FETCH;
+                end
+
+                // ---------------- HALT ----------------
+                HALT_STATE: begin
+                    state <= HALT_STATE; // freeze
+                end
+
+            endcase
+        end
+    end
+
+endmodule
